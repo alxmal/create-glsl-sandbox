@@ -89,8 +89,6 @@ const uniforms = { u_time:{value:0.0}, u_resolution:{value:new THREE.Vector3(1,1
 
 const vert = String.raw\`
 precision highp float;
-attribute vec3 position;
-attribute vec2 uv;
 varying vec2 vUv;
 void main(){ vUv = uv; gl_Position = vec4(position, 1.0); }
 \`;
