@@ -69,44 +69,39 @@ const projectPkg = (name) => ({
     type: 'module',
     scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview' },
     dependencies: { three: '^0.160.0' },
-    devDependencies: { vite: '^5.4.0' },
+    devDependencies: { vite: '^5.4.0', 'vite-plugin-glsl': '^1.3.0' },
 });
-const viteConfig = () =>
-    `import { defineConfig } from 'vite';\nexport default defineConfig({ server: { open: true } });\n`;
-const indexHtml = (title) =>
-    `<!doctype html>\n<html lang="ru"><head>\n<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>\n<title>${title}</title>\n<style>html,body{height:100%;margin:0;background:#000;overflow:hidden}canvas{display:block}</style>\n</head><body><script type="module" src="/src/main.js"></script></body></html>`;
 
-const mainJs = () =>
-    `import * as THREE from 'three';
+const viteConfig = () => `import { defineConfig } from 'vite';
+import glsl from 'vite-plugin-glsl';
+
+export default defineConfig({
+  plugins: [glsl({ include: ['**/*.glsl','**/*.vert','**/*.frag'] })],
+  server: { open: true },
+});
+`;
+
+const indexHtml = (title) => `<!doctype html>
+<html lang="ru"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>${title}</title>
+<style>html,body{height:100%;margin:0;background:#000;overflow:hidden}canvas{display:block}</style>
+</head><body><script type="module" src="/src/main.js"></script></body></html>`;
+
+const mainJs = () => `import * as THREE from 'three';
+import vert from './shaders/vert.glsl';
+import frag from './shaders/frag.glsl';
 
 const renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:'high-performance' });
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
 
-// u_* uniforms (non-Shadertoy)
-const uniforms = { u_time:{value:0.0}, u_resolution:{value:new THREE.Vector3(1,1,1)} };
-
-const vert = String.raw\`
-precision highp float;
-varying vec2 vUv;
-void main(){ vUv = uv; gl_Position = vec4(position, 1.0); }
-\`;
-
-const frag = String.raw\`
-precision highp float;
-uniform vec3  u_resolution; // (width, height, pixelAspect)
-uniform float u_time;
-varying vec2  vUv;
-
-void main(){
-  vec2 fragCoord = vUv * u_resolution.xy;
-  vec2 uv = (fragCoord - 0.5*u_resolution.xy) / u_resolution.y;
-  float t = u_time;
-  vec3 col = 0.5 + 0.5*cos(6.28318*(uv.xyx + vec3(0.0,0.33,0.67)) + t);
-  gl_FragColor = vec4(col, 1.0);
-}
-\`;
+// u_* uniforms
+const uniforms = {
+  u_time: { value: 0.0 },
+  u_resolution: { value: new THREE.Vector3(1,1,1) },
+};
 
 const material = new THREE.ShaderMaterial({ vertexShader: vert, fragmentShader: frag, uniforms });
 const quad = new THREE.Mesh(new THREE.PlaneGeometry(2,2), material);
@@ -131,6 +126,29 @@ function tick(){
 tick();
 `;
 
+// default shader files
+const shaderVert = () => `precision highp float;
+varying vec2 vUv;
+void main(){
+  vUv = uv;
+  gl_Position = vec4(position, 1.0);
+}
+`;
+
+const shaderFrag = () => `precision highp float;
+uniform vec3  u_resolution;
+uniform float u_time;
+varying vec2  vUv;
+
+void main(){
+  vec2 fragCoord = vUv * u_resolution.xy;
+  vec2 uv = (fragCoord - 0.5*u_resolution.xy) / u_resolution.y;
+  float t = u_time;
+  vec3 col = 0.5 + 0.5*cos(6.28318*(uv.xyx + vec3(0.0,0.33,0.67)) + t);
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
 const readme = (name) =>
     `# ${name}
 
@@ -140,12 +158,11 @@ const readme = (name) =>
 - \`npm run build\` — production build
 - \`npm run preview\` — preview build
 
-Edit \`src/main.js\`: put your fragment shader code in place.
+Edit \`src/shaders/*.glsl\` and \`src/main.js\`.
 `;
 
 // ---------- CLI ----------
 async function run() {
-    // fixed argv parsing: take positionals after the script
     const argv = process.argv.slice(2);
     const positionals = argv.filter((a) => !a.startsWith('-'));
     const argName = positionals[0];
@@ -222,6 +239,8 @@ async function run() {
     write(path.join(root, 'vite.config.js'), viteConfig());
     write(path.join(root, 'index.html'), indexHtml(projectName));
     write(path.join(root, 'src/main.js'), mainJs());
+    write(path.join(root, 'src/shaders/vert.glsl'), shaderVert());
+    write(path.join(root, 'src/shaders/frag.glsl'), shaderFrag());
     write(
         path.join(root, '.gitignore'),
         ['node_modules', 'dist', '.DS_Store'].join('\n')
@@ -246,7 +265,9 @@ async function run() {
     }
 
     console.log(`  ${green(pm)} run dev`);
-    console.log(`\nEdit ${cyan('src/main.js')} and the fragment shader.`);
+    console.log(
+        `\nEdit ${cyan('src/shaders/*.glsl')} and ${cyan('src/main.js')}.`
+    );
 
     if (args.run) {
         const runArgs = pm === 'yarn' ? ['dev'] : ['run', 'dev'];
