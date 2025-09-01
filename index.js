@@ -15,8 +15,10 @@ const write = (dest, content) => {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, content);
 };
+
 const runCmd = (cmd, args, cwd) =>
     child_process.spawnSync(cmd, args, { stdio: 'inherit', cwd });
+
 const detectPM = () => {
     const ua = process.env.npm_config_user_agent || '';
     if (ua.startsWith('pnpm')) return 'pnpm';
@@ -24,6 +26,7 @@ const detectPM = () => {
     if (ua.startsWith('bun')) return 'bun';
     return 'npm';
 };
+
 const hasCmd = (cmd) => {
     try {
         return (
@@ -34,6 +37,16 @@ const hasCmd = (cmd) => {
         return false;
     }
 };
+
+const tryOpenVSCode = (root) => {
+    if (!hasCmd('code')) return false;
+    const r = child_process.spawnSync('code', ['.'], {
+        cwd: root,
+        stdio: 'ignore',
+    });
+    return r.status === 0;
+};
+
 const tryGitInit = (root, msg = 'init') => {
     if (!hasCmd('git')) return;
     if (fs.existsSync(path.join(root, '.git'))) return;
@@ -149,18 +162,6 @@ void main(){
 }
 `;
 
-const readme = (name) =>
-    `# ${name}
-
-**Commands**
-
-- \`npm run dev\` — start Vite dev server
-- \`npm run build\` — production build
-- \`npm run preview\` — preview build
-
-Edit \`src/shaders/*.glsl\` and \`src/main.js\`.
-`;
-
 // ---------- CLI ----------
 async function run() {
     const argv = process.argv.slice(2);
@@ -221,7 +222,7 @@ async function run() {
         answers.projectName ||
         'glsl-sandbox'
     ).trim();
-    const template = args.template || answers.template || 'three';
+
     const pm = args.pm || answers.pm || detectPM();
 
     const root = path.resolve(process.cwd(), projectName);
@@ -245,10 +246,10 @@ async function run() {
         path.join(root, '.gitignore'),
         ['node_modules', 'dist', '.DS_Store'].join('\n')
     );
-    write(path.join(root, 'README.md'), readme(projectName));
 
     const autoInstall = !(args['no-install'] || args.noInstall);
     const autoGit = !(args['no-git'] || args.noGit);
+    const autoCode = !!(args.code || args.openCode);
 
     console.log(`\n${bold(cyan('Scaffolded'))} ${projectName} in ${root}`);
     if (autoInstall) {
@@ -262,6 +263,15 @@ async function run() {
 
     if (autoGit) {
         tryGitInit(root, 'init');
+    }
+    if (autoCode) {
+        const ok = tryOpenVSCode(root);
+        if (!ok)
+            console.log(
+                gray(
+                    "VS Code 'code' command not found. Install it via Command Palette."
+                )
+            );
     }
 
     console.log(`  ${green(pm)} run dev`);
