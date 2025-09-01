@@ -10,15 +10,13 @@ import { cyan, green, yellow, gray, bold } from 'kolorist';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ---------- helpers ----------
+// helpers
 const write = (dest, content) => {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, content);
 };
-
 const runCmd = (cmd, args, cwd) =>
     child_process.spawnSync(cmd, args, { stdio: 'inherit', cwd });
-
 const detectPM = () => {
     const ua = process.env.npm_config_user_agent || '';
     if (ua.startsWith('pnpm')) return 'pnpm';
@@ -26,7 +24,6 @@ const detectPM = () => {
     if (ua.startsWith('bun')) return 'bun';
     return 'npm';
 };
-
 const hasCmd = (cmd) => {
     try {
         return (
@@ -37,16 +34,6 @@ const hasCmd = (cmd) => {
         return false;
     }
 };
-
-const tryOpenVSCode = (root) => {
-    if (!hasCmd('code')) return false;
-    const r = child_process.spawnSync('code', ['.'], {
-        cwd: root,
-        stdio: 'ignore',
-    });
-    return r.status === 0;
-};
-
 const tryGitInit = (root, msg = 'init') => {
     if (!hasCmd('git')) return;
     if (fs.existsSync(path.join(root, '.git'))) return;
@@ -73,8 +60,16 @@ const tryGitInit = (root, msg = 'init') => {
         stdio: 'ignore',
     });
 };
+const tryOpenVSCode = (root) => {
+    if (!hasCmd('code')) return false;
+    const r = child_process.spawnSync('code', ['.'], {
+        cwd: root,
+        stdio: 'ignore',
+    });
+    return r.status === 0;
+};
 
-// ---------- project templates ----------
+// templates
 const projectPkg = (name) => ({
     name,
     version: '0.0.1',
@@ -162,7 +157,7 @@ void main(){
 }
 `;
 
-// ---------- CLI ----------
+// CLI
 async function run() {
     const argv = process.argv.slice(2);
     const positionals = argv.filter((a) => !a.startsWith('-'));
@@ -185,16 +180,6 @@ async function run() {
                 type: argName ? null : 'text',
                 message: 'Project name',
                 initial: 'glsl-sandbox',
-            },
-            {
-                name: 'template',
-                type: args.template ? null : 'select',
-                message: 'Template',
-                choices: [
-                    { title: 'Three.js + Vite', value: 'three' },
-                    { title: 'Raw WebGL + Vite', value: 'raw' },
-                ],
-                initial: 0,
             },
             {
                 name: 'pm',
@@ -222,7 +207,6 @@ async function run() {
         answers.projectName ||
         'glsl-sandbox'
     ).trim();
-
     const pm = args.pm || answers.pm || detectPM();
 
     const root = path.resolve(process.cwd(), projectName);
@@ -249,7 +233,9 @@ async function run() {
 
     const autoInstall = !(args['no-install'] || args.noInstall);
     const autoGit = !(args['no-git'] || args.noGit);
-    const autoCode = !!(args.code || args.openCode);
+    const autoCode = !(args['no-code'] || args.noCode); // open VS Code by default
+    const autoRun =
+        !!args.run || (autoInstall && !(args['no-run'] || args.noRun)); // run dev by default after install
 
     console.log(`\n${bold(cyan('Scaffolded'))} ${projectName} in ${root}`);
     if (autoInstall) {
@@ -279,7 +265,7 @@ async function run() {
         `\nEdit ${cyan('src/shaders/*.glsl')} and ${cyan('src/main.js')}.`
     );
 
-    if (args.run) {
+    if (autoRun) {
         const runArgs = pm === 'yarn' ? ['dev'] : ['run', 'dev'];
         runCmd(pm, runArgs, root);
     }
