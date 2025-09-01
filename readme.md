@@ -1,6 +1,6 @@
 # create-glsl-sandbox ✨
 
-CLI для быстрого старта локальной песочницы шейдеров: **Three.js + Vite**. Совместимо со стилем Shadertoy (`mainImage`, `fragCoord`, `iTime`, `iResolution`).
+CLI для быстрого старта локальной песочницы шейдеров: **Three.js + Vite**.
 
 ---
 

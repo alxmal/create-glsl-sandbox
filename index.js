@@ -77,18 +77,83 @@ const indexHtml = (title) =>
     `<!doctype html>\n<html lang="ru"><head>\n<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>\n<title>${title}</title>\n<style>html,body{height:100%;margin:0;background:#000;overflow:hidden}canvas{display:block}</style>\n</head><body><script type="module" src="/src/main.js"></script></body></html>`;
 
 const mainJs = () =>
-    `import * as THREE from 'three';\n\nconst renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:'high-performance' });\ndocument.body.appendChild(renderer.domElement);\nconst scene = new THREE.Scene();\nconst camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);\n\nconst uniforms = { u_time:{value:0.0}, u_resolution:{value:new THREE.Vector3(1,1,1)} };\n\nconst vert = String.raw\`\nprecision highp float;\nattribute vec3 position;\nattribute vec2 uv;\nvarying vec2 vUv;\nvoid main(){ vUv = uv; gl_Position = vec4(position, 1.0); }\n\`;\n\nconst frag = String.raw\`\nprecision highp float;\nuniform vec3  u_resolution; // (width, height, pixelAspect)\nuniform float u_time;\nvarying vec2  vUv;\n\nvoid main(){\n  vec2 fragCoord = vUv * u_resolution.xy;\n  vec2 uv = (fragCoord - 0.5*u_resolution.xy) / u_resolution.y;\n  float t = u_time;\n  vec3 col = 0.5 + 0.5*cos(6.28318*(uv.xyx + vec3(0.0,0.33,0.67)) + t);\n  gl_FragColor = vec4(col, 1.0);\n}\n\`;\n\nconst material = new THREE.ShaderMaterial({ vertexShader: vert, fragmentShader: frag, uniforms });\nconst quad = new THREE.Mesh(new THREE.PlaneGeometry(2,2), material);\nscene.add(quad);\n\nconst dpr = Math.min(window.devicePixelRatio || 1, 2);\nfunction resize(){\n  const w = window.innerWidth, h = window.innerHeight;\n  renderer.setPixelRatio(dpr);\n  renderer.setSize(w, h, false);\n  uniforms.u_resolution.value.set(w*dpr, h*dpr, 1.0);\n}\nwindow.addEventListener('resize', resize);\nresize();\n\nconst clock = new THREE.Clock();\nfunction tick(){\n  uniforms.u_time.value = clock.getElapsedTime();\n  renderer.render(scene, camera);\n  requestAnimationFrame(tick);\n}\ntick();\n`;
+    `import * as THREE from 'three';
+
+const renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:'high-performance' });
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+
+// u_* uniforms (non-Shadertoy)
+const uniforms = { u_time:{value:0.0}, u_resolution:{value:new THREE.Vector3(1,1,1)} };
+
+const vert = String.raw\`
+precision highp float;
+attribute vec3 position;
+attribute vec2 uv;
+varying vec2 vUv;
+void main(){ vUv = uv; gl_Position = vec4(position, 1.0); }
+\`;
+
+const frag = String.raw\`
+precision highp float;
+uniform vec3  u_resolution; // (width, height, pixelAspect)
+uniform float u_time;
+varying vec2  vUv;
+
+void main(){
+  vec2 fragCoord = vUv * u_resolution.xy;
+  vec2 uv = (fragCoord - 0.5*u_resolution.xy) / u_resolution.y;
+  float t = u_time;
+  vec3 col = 0.5 + 0.5*cos(6.28318*(uv.xyx + vec3(0.0,0.33,0.67)) + t);
+  gl_FragColor = vec4(col, 1.0);
+}
+\`;
+
+const material = new THREE.ShaderMaterial({ vertexShader: vert, fragmentShader: frag, uniforms });
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2,2), material);
+scene.add(quad);
+
+const dpr = Math.min(window.devicePixelRatio || 1, 2);
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(w, h, false);
+  uniforms.u_resolution.value.set(w*dpr, h*dpr, 1.0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const clock = new THREE.Clock();
+function tick(){
+  uniforms.u_time.value = clock.getElapsedTime();
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+tick();
+`;
 
 const readme = (name) =>
-    `# ${name}\n\n**Commands**\n\n- \`npm run dev\` — start Vite dev server\n- \`npm run build\` — production build\n- \`npm run preview\` — preview build\n\nEdit \`src/main.js\`: put your fragment shader code in place.\n`;
+    `# ${name}
+
+**Commands**
+
+- \`npm run dev\` — start Vite dev server
+- \`npm run build\` — production build
+- \`npm run preview\` — preview build
+
+Edit \`src/main.js\`: put your fragment shader code in place.
+`;
 
 // ---------- CLI ----------
 async function run() {
-    const argName = process.argv.find(
-        (a) => !a.startsWith('-') && !a.endsWith('.js')
-    );
+    // fixed argv parsing: take positionals after the script
+    const argv = process.argv.slice(2);
+    const positionals = argv.filter((a) => !a.startsWith('-'));
+    const argName = positionals[0];
+
     const args = Object.fromEntries(
-        process.argv
+        argv
             .filter((a) => a.startsWith('--'))
             .map((a) => a.replace(/^--/, ''))
             .map((kv) => {
@@ -110,11 +175,8 @@ async function run() {
                 type: args.template ? null : 'select',
                 message: 'Template',
                 choices: [
-                    {
-                        title: 'Three.js + Vite (Shadertoy-style)',
-                        value: 'three',
-                    },
-                    { title: 'Raw WebGL + Vite (minimal)', value: 'raw' },
+                    { title: 'Three.js + Vite', value: 'three' },
+                    { title: 'Raw WebGL + Vite', value: 'raw' },
                 ],
                 initial: 0,
             },
