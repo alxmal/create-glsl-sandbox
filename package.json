@@ -1,0 +1,12 @@
+{
+    "name": "create-glsl-sandbox",
+    "version": "0.1.0",
+    "type": "module",
+    "bin": {
+        "create-glsl-sandbox": "index.js"
+    },
+    "dependencies": {
+        "prompts": "^2.4.2",
+        "kolorist": "^1.8.0"
+    }
+}
