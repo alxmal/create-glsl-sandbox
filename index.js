@@ -10,7 +10,7 @@ import { cyan, green, yellow, gray, bold } from 'kolorist';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// helpers
+// ---------- helpers ----------
 const write = (dest, content) => {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, content);
@@ -69,7 +69,45 @@ const tryOpenVSCode = (root) => {
     return r.status === 0;
 };
 
-// templates
+// NEW: add LYGIA as git submodule by default
+const addLygiaSubmodule = (root) => {
+    if (!hasCmd('git')) return;
+    const subPath = path.join(root, 'src/shaders/lygia');
+    if (!fs.existsSync(subPath)) {
+        child_process.spawnSync(
+            'git',
+            [
+                'submodule',
+                'add',
+                'https://github.com/patriciogonzalezvivo/lygia.git',
+                'src/shaders/lygia',
+            ],
+            { cwd: root, stdio: 'ignore' }
+        );
+        // track main branch (optional)
+        child_process.spawnSync(
+            'git',
+            [
+                'submodule',
+                'set-branch',
+                '--branch',
+                'main',
+                'src/shaders/lygia',
+            ],
+            { cwd: root, stdio: 'ignore' }
+        );
+    }
+    child_process.spawnSync('git', ['add', '-A'], {
+        cwd: root,
+        stdio: 'ignore',
+    });
+    child_process.spawnSync('git', ['commit', '-m', 'add lygia submodule'], {
+        cwd: root,
+        stdio: 'ignore',
+    });
+};
+
+// ---------- project templates ----------
 const projectPkg = (name) => ({
     name,
     version: '0.0.1',
@@ -80,11 +118,18 @@ const projectPkg = (name) => ({
     devDependencies: { vite: '^5.4.0', 'vite-plugin-glsl': '^1.3.0' },
 });
 
+// NEW: set GLSL root to src/shaders so #include "lygia/..." works from submodule
 const viteConfig = () => `import { defineConfig } from 'vite';
 import glsl from 'vite-plugin-glsl';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  plugins: [glsl({ include: ['**/*.glsl','**/*.vert','**/*.frag'] })],
+  plugins: [glsl({
+    include: ['**/*.glsl','**/*.vert','**/*.frag','**/*.vs','**/*.fs','**/*.wgsl'],
+    root: [ path.resolve(__dirname, 'src/shaders') ],
+  })],
   server: { open: true },
 });
 `;
@@ -143,21 +188,27 @@ void main(){
 }
 `;
 
+// NEW: default frag uses LYGIA include
 const shaderFrag = () => `precision highp float;
 uniform vec3  u_resolution;
 uniform float u_time;
 varying vec2  vUv;
 
+#include "lygia/space/ratio.glsl"
+
 void main(){
   vec2 fragCoord = vUv * u_resolution.xy;
-  vec2 uv = (fragCoord - 0.5*u_resolution.xy) / u_resolution.y;
+  vec2 st = fragCoord / u_resolution.xy; // [0,1]
+  st = ratio(st, u_resolution.xy);       // fix aspect
+  vec2 uv = st * 2.0 - 1.0;              // [-1,1]
+
   float t = u_time;
   vec3 col = 0.5 + 0.5*cos(6.28318*(uv.xyx + vec3(0.0,0.33,0.67)) + t);
   gl_FragColor = vec4(col, 1.0);
 }
 `;
 
-// CLI
+// ---------- CLI ----------
 async function run() {
     const argv = process.argv.slice(2);
     const positionals = argv.filter((a) => !a.startsWith('-'));
@@ -231,11 +282,12 @@ async function run() {
         ['node_modules', 'dist', '.DS_Store'].join('\n')
     );
 
+    // defaults
     const autoInstall = !(args['no-install'] || args.noInstall);
     const autoGit = !(args['no-git'] || args.noGit);
     const autoCode = !(args['no-code'] || args.noCode); // open VS Code by default
     const autoRun =
-        !!args.run || (autoInstall && !(args['no-run'] || args.noRun)); // run dev by default after install
+        !!args.run || (autoInstall && !(args['no-run'] || args.noRun)); // run dev after install
 
     console.log(`\n${bold(cyan('Scaffolded'))} ${projectName} in ${root}`);
     if (autoInstall) {
@@ -250,6 +302,13 @@ async function run() {
     if (autoGit) {
         tryGitInit(root, 'init');
     }
+
+    // NEW: add LYGIA submodule unless disabled
+    const withLygia = !(args['no-lygia'] || args.noLygia);
+    if (autoGit && withLygia) {
+        addLygiaSubmodule(root);
+    }
+
     if (autoCode) {
         const ok = tryOpenVSCode(root);
         if (!ok)
