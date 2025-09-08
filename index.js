@@ -84,7 +84,7 @@ const tryOpenEditor = (root, preferredEditor = 'auto') => {
         }
         return false;
     }
-    
+
     if (preferredEditor === 'vscode') {
         if (hasCmd('code')) {
             const r = child_process.spawnSync('code', ['.'], {
@@ -95,7 +95,7 @@ const tryOpenEditor = (root, preferredEditor = 'auto') => {
         }
         return false;
     }
-    
+
     // Auto mode: Try Cursor first, then VS Code
     if (hasCmd('cursor')) {
         const r = child_process.spawnSync('cursor', ['.'], {
