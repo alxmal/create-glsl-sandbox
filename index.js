@@ -72,8 +72,31 @@ const tryGitInit = (root, msg = 'init') => {
         console.log(yellow(`⚠️  Git init failed: ${error.message}`));
     }
 };
-const tryOpenEditor = (root) => {
-    // Try Cursor first, then VS Code
+const tryOpenEditor = (root, preferredEditor = 'auto') => {
+    // If specific editor requested, try only that one
+    if (preferredEditor === 'cursor') {
+        if (hasCmd('cursor')) {
+            const r = child_process.spawnSync('cursor', ['.'], {
+                cwd: root,
+                stdio: 'ignore',
+            });
+            if (r.status === 0) return 'cursor';
+        }
+        return false;
+    }
+    
+    if (preferredEditor === 'vscode') {
+        if (hasCmd('code')) {
+            const r = child_process.spawnSync('code', ['.'], {
+                cwd: root,
+                stdio: 'ignore',
+            });
+            if (r.status === 0) return 'vscode';
+        }
+        return false;
+    }
+    
+    // Auto mode: Try Cursor first, then VS Code
     if (hasCmd('cursor')) {
         const r = child_process.spawnSync('cursor', ['.'], {
             cwd: root,
