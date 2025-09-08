@@ -1,12 +1,30 @@
 {
     "name": "create-glsl-sandbox",
     "version": "0.1.0",
+    "description": "CLI scaffold for a Three.js + Vite shader sandbox with LYGIA integration",
     "type": "module",
     "bin": {
         "create-glsl-sandbox": "index.js"
     },
+    "keywords": [
+        "glsl",
+        "shader",
+        "three.js",
+        "vite",
+        "sandbox",
+        "cli"
+    ],
+    "author": "alxmal",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/alxmal/create-glsl-sandbox.git"
+    },
+    "engines": {
+        "node": ">=16.0.0"
+    },
     "dependencies": {
-        "prompts": "^2.4.2",
-        "kolorist": "^1.8.0"
+        "prompts": "^3.0.0",
+        "kolorist": "^2.0.0"
     }
 }

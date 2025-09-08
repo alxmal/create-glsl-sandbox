@@ -12,11 +12,25 @@ const __dirname = path.dirname(__filename);
 
 // ---------- helpers ----------
 const write = (dest, content) => {
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.writeFileSync(dest, content);
+    try {
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.writeFileSync(dest, content);
+    } catch (error) {
+        console.error(`❌ Failed to write ${dest}:`, error.message);
+        process.exit(1);
+    }
 };
-const runCmd = (cmd, args, cwd) =>
-    child_process.spawnSync(cmd, args, { stdio: 'inherit', cwd });
+const runCmd = (cmd, args, cwd, silent = false) => {
+    const result = child_process.spawnSync(cmd, args, {
+        stdio: silent ? 'pipe' : 'inherit',
+        cwd,
+    });
+    if (result.status !== 0 && !silent) {
+        console.error(`❌ Command failed: ${cmd} ${args.join(' ')}`);
+        process.exit(1);
+    }
+    return result;
+};
 const detectPM = () => {
     const ua = process.env.npm_config_user_agent || '';
     if (ua.startsWith('pnpm')) return 'pnpm';
@@ -35,30 +49,28 @@ const hasCmd = (cmd) => {
     }
 };
 const tryGitInit = (root, msg = 'init') => {
-    if (!hasCmd('git')) return;
-    if (fs.existsSync(path.join(root, '.git'))) return;
-    let r = child_process.spawnSync('git', ['init', '-b', 'main'], {
-        cwd: root,
-        stdio: 'ignore',
-    });
-    if (r.status !== 0) {
-        child_process.spawnSync('git', ['init'], {
-            cwd: root,
-            stdio: 'ignore',
-        });
-        child_process.spawnSync('git', ['branch', '-M', 'main'], {
-            cwd: root,
-            stdio: 'ignore',
-        });
+    if (!hasCmd('git')) {
+        console.log(gray('Git not found, skipping git init'));
+        return;
     }
-    child_process.spawnSync('git', ['add', '-A'], {
-        cwd: root,
-        stdio: 'ignore',
-    });
-    child_process.spawnSync('git', ['commit', '-m', msg], {
-        cwd: root,
-        stdio: 'ignore',
-    });
+    if (fs.existsSync(path.join(root, '.git'))) {
+        console.log(gray('Git repository already exists'));
+        return;
+    }
+
+    try {
+        console.log('🔧 Initializing git repository...');
+        let r = runCmd('git', ['init', '-b', 'main'], root, true);
+        if (r.status !== 0) {
+            runCmd('git', ['init'], root, true);
+            runCmd('git', ['branch', '-M', 'main'], root, true);
+        }
+        runCmd('git', ['add', '-A'], root, true);
+        runCmd('git', ['commit', '-m', msg], root, true);
+        console.log(green('✅ Git repository initialized'));
+    } catch (error) {
+        console.log(yellow(`⚠️  Git init failed: ${error.message}`));
+    }
 };
 const tryOpenVSCode = (root) => {
     if (!hasCmd('code')) return false;
@@ -69,12 +81,61 @@ const tryOpenVSCode = (root) => {
     return r.status === 0;
 };
 
+// Validation helpers
+const validateProjectName = (name) => {
+    if (!name || name.trim().length === 0) {
+        throw new Error('Project name cannot be empty');
+    }
+
+    const trimmed = name.trim();
+
+    // Check for invalid characters
+    if (!/^[a-zA-Z0-9-_]+$/.test(trimmed)) {
+        throw new Error(
+            'Project name can only contain letters, numbers, hyphens and underscores'
+        );
+    }
+
+    // Check for reserved names
+    const reserved = [
+        'node_modules',
+        'dist',
+        'build',
+        'src',
+        'public',
+        'test',
+        'tests',
+    ];
+    if (reserved.includes(trimmed.toLowerCase())) {
+        throw new Error(
+            `"${trimmed}" is a reserved name. Please choose a different name.`
+        );
+    }
+
+    // Check length
+    if (trimmed.length > 50) {
+        throw new Error('Project name is too long (max 50 characters)');
+    }
+
+    return trimmed;
+};
+
 // NEW: add LYGIA as git submodule by default
 const addLygiaSubmodule = (root) => {
-    if (!hasCmd('git')) return;
+    if (!hasCmd('git')) {
+        console.log(gray('Git not found, skipping LYGIA submodule'));
+        return;
+    }
+
     const subPath = path.join(root, 'src/shaders/lygia');
-    if (!fs.existsSync(subPath)) {
-        child_process.spawnSync(
+    if (fs.existsSync(subPath)) {
+        console.log(gray('LYGIA submodule already exists'));
+        return;
+    }
+
+    try {
+        console.log('📦 Adding LYGIA submodule...');
+        const result = runCmd(
             'git',
             [
                 'submodule',
@@ -82,29 +143,42 @@ const addLygiaSubmodule = (root) => {
                 'https://github.com/patriciogonzalezvivo/lygia.git',
                 'src/shaders/lygia',
             ],
-            { cwd: root, stdio: 'ignore' }
+            root,
+            true
         );
-        // track main branch (optional)
-        child_process.spawnSync(
-            'git',
-            [
-                'submodule',
-                'set-branch',
-                '--branch',
-                'main',
-                'src/shaders/lygia',
-            ],
-            { cwd: root, stdio: 'ignore' }
+
+        if (result.status === 0) {
+            // track main branch (optional)
+            runCmd(
+                'git',
+                [
+                    'submodule',
+                    'set-branch',
+                    '--branch',
+                    'main',
+                    'src/shaders/lygia',
+                ],
+                root,
+                true
+            );
+
+            runCmd('git', ['add', '-A'], root, true);
+            runCmd('git', ['commit', '-m', 'add lygia submodule'], root, true);
+            console.log(green('✅ LYGIA submodule added successfully'));
+        } else {
+            throw new Error('Failed to add submodule');
+        }
+    } catch (error) {
+        console.log(
+            yellow(`⚠️  Failed to add LYGIA submodule: ${error.message}`)
+        );
+        console.log(gray('You can add it manually later with:'));
+        console.log(
+            gray(
+                '  git submodule add https://github.com/patriciogonzalezvivo/lygia.git src/shaders/lygia'
+            )
         );
     }
-    child_process.spawnSync('git', ['add', '-A'], {
-        cwd: root,
-        stdio: 'ignore',
-    });
-    child_process.spawnSync('git', ['commit', '-m', 'add lygia submodule'], {
-        cwd: root,
-        stdio: 'ignore',
-    });
 };
 
 // ---------- project templates ----------
@@ -211,6 +285,41 @@ void main(){
 // ---------- CLI ----------
 async function run() {
     const argv = process.argv.slice(2);
+
+    // Show help if requested
+    if (argv.includes('--help') || argv.includes('-h')) {
+        console.log(`
+${bold(
+    cyan('create-glsl-sandbox')
+)} - CLI scaffold for Three.js + Vite shader sandbox
+
+${bold('Usage:')}
+  create-glsl-sandbox [project-name] [options]
+
+${bold('Options:')}
+  --pm <manager>     Package manager (npm|pnpm|yarn|bun)
+  --no-install       Skip dependency installation
+  --no-git           Skip git initialization
+  --no-lygia         Skip LYGIA submodule addition
+  --no-code          Skip VS Code opening
+  --run              Start dev server after setup
+  --help, -h         Show this help
+
+${bold('Examples:')}
+  create-glsl-sandbox my-shader
+  create-glsl-sandbox my-shader --pm pnpm --run
+  create-glsl-sandbox my-shader --no-git --no-lygia
+
+${bold('Features:')}
+  ✨ Three.js + Vite setup
+  🎨 GLSL shader support with hot reload
+  📦 LYGIA shader library integration
+  🔧 VS Code auto-opening
+  🚀 Ready-to-run development environment
+`);
+        process.exit(0);
+    }
+
     const positionals = argv.filter((a) => !a.startsWith('-'));
     const argName = positionals[0];
 
@@ -224,6 +333,16 @@ async function run() {
             })
     );
 
+    // Show welcome message
+    if (!argName) {
+        console.log(
+            `\n${bold(
+                cyan('✨ create-glsl-sandbox')
+            )} - Three.js + Vite shader sandbox`
+        );
+        console.log(gray('Create a new GLSL shader development environment\n'));
+    }
+
     const answers = await prompts(
         [
             {
@@ -231,6 +350,14 @@ async function run() {
                 type: argName ? null : 'text',
                 message: 'Project name',
                 initial: 'glsl-sandbox',
+                validate: (value) => {
+                    try {
+                        validateProjectName(value);
+                        return true;
+                    } catch (error) {
+                        return error.message;
+                    }
+                },
             },
             {
                 name: 'pm',
@@ -247,27 +374,47 @@ async function run() {
         ],
         {
             onCancel: () => {
-                console.log(gray('Cancelled.'));
+                console.log(gray('\n❌ Cancelled.'));
                 process.exit(1);
             },
         }
     );
 
-    const projectName = (
-        argName ||
-        answers.projectName ||
-        'glsl-sandbox'
-    ).trim();
+    let projectName;
+    try {
+        projectName = validateProjectName(
+            argName || answers.projectName || 'glsl-sandbox'
+        );
+    } catch (error) {
+        console.error(`❌ ${error.message}`);
+        process.exit(1);
+    }
+
     const pm = args.pm || answers.pm || detectPM();
 
     const root = path.resolve(process.cwd(), projectName);
     if (fs.existsSync(root) && fs.readdirSync(root).length) {
-        console.log(yellow(`Directory ${projectName} is not empty.`));
+        console.log(yellow(`❌ Directory "${projectName}" is not empty.`));
+        console.log(
+            gray(
+                'Please choose a different name or remove the existing directory.'
+            )
+        );
         process.exit(1);
     }
-    fs.mkdirSync(root, { recursive: true });
+
+    try {
+        fs.mkdirSync(root, { recursive: true });
+    } catch (error) {
+        console.error(
+            `❌ Failed to create directory "${projectName}":`,
+            error.message
+        );
+        process.exit(1);
+    }
 
     // write files
+    console.log('📝 Creating project files...');
     write(
         path.join(root, 'package.json'),
         JSON.stringify(projectPkg(projectName), null, 2) + '\n'
@@ -281,6 +428,7 @@ async function run() {
         path.join(root, '.gitignore'),
         ['node_modules', 'dist', '.DS_Store'].join('\n')
     );
+    console.log(green('✅ Project files created'));
 
     // defaults
     const autoInstall = !(args['no-install'] || args.noInstall);
@@ -289,12 +437,21 @@ async function run() {
     const autoRun =
         !!args.run || (autoInstall && !(args['no-run'] || args.noRun)); // run dev after install
 
-    console.log(`\n${bold(cyan('Scaffolded'))} ${projectName} in ${root}`);
+    console.log(
+        `\n${bold(cyan('✨ Scaffolded'))} ${bold(projectName)} in ${root}`
+    );
     if (autoInstall) {
-        console.log(`\nInstalling dependencies with ${pm}...`);
-        runCmd(pm, ['install'], root);
+        console.log(`\n📦 Installing dependencies with ${pm}...`);
+        try {
+            runCmd(pm, ['install'], root);
+            console.log(green('✅ Dependencies installed'));
+        } catch (error) {
+            console.log(yellow(`⚠️  Installation failed: ${error.message}`));
+            console.log(gray('You can install manually later with:'));
+            console.log(gray(`  cd ${projectName} && ${pm} install`));
+        }
     } else {
-        console.log(`\nNext steps:`);
+        console.log(`\n📋 Next steps:`);
         console.log(`  ${green('cd')} ${projectName}`);
         console.log(`  ${green(pm)} install`);
     }
@@ -310,23 +467,39 @@ async function run() {
     }
 
     if (autoCode) {
+        console.log('🔧 Opening VS Code...');
         const ok = tryOpenVSCode(root);
-        if (!ok)
+        if (ok) {
+            console.log(green('✅ VS Code opened'));
+        } else {
             console.log(
                 gray(
-                    "VS Code 'code' command not found. Install it via Command Palette."
+                    "⚠️  VS Code 'code' command not found. Install it via Command Palette."
                 )
             );
+        }
     }
 
+    console.log(`\n🚀 To start development:`);
     console.log(`  ${green(pm)} run dev`);
     console.log(
-        `\nEdit ${cyan('src/shaders/*.glsl')} and ${cyan('src/main.js')}.`
+        `\n📝 Edit ${cyan('src/shaders/*.glsl')} and ${cyan(
+            'src/main.js'
+        )} to create your shaders.`
     );
 
     if (autoRun) {
+        console.log('\n🏃 Starting development server...');
         const runArgs = pm === 'yarn' ? ['dev'] : ['run', 'dev'];
-        runCmd(pm, runArgs, root);
+        try {
+            runCmd(pm, runArgs, root);
+        } catch (error) {
+            console.log(
+                yellow(`⚠️  Failed to start dev server: ${error.message}`)
+            );
+            console.log(gray('You can start it manually with:'));
+            console.log(gray(`  cd ${projectName} && ${pm} run dev`));
+        }
     }
 }
 
