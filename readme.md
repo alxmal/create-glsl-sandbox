@@ -91,6 +91,7 @@ vec2 uv = st * 2.0 - 1.0;              // [-1,1]
 -   `--no-git` — пропустить git init
 -   `--no-lygia` — не добавлять LYGIA submodule
 -   `--no-code` — не открывать редактор (Cursor/VS Code)
+-   `--editor cursor|vscode|auto` — выбрать предпочитаемый редактор
 -   `--run` — запустить `dev` сразу после генерации
 
 ---

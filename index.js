@@ -314,12 +314,14 @@ ${bold('Options:')}
   --no-git           Skip git initialization
   --no-lygia         Skip LYGIA submodule addition
   --no-code          Skip editor opening (Cursor/VS Code)
+  --editor <name>    Preferred editor (cursor|vscode|auto)
   --run              Start dev server after setup
   --help, -h         Show this help
 
 ${bold('Examples:')}
   create-glsl-sandbox my-shader
   create-glsl-sandbox my-shader --pm pnpm --run
+  create-glsl-sandbox my-shader --editor cursor --run
   create-glsl-sandbox my-shader --no-git --no-lygia
 
 ${bold('Features:')}
@@ -480,7 +482,8 @@ ${bold('Features:')}
 
     if (autoCode) {
         console.log('🔧 Opening editor...');
-        const editor = tryOpenEditor(root);
+        const preferredEditor = args.editor || 'auto';
+        const editor = tryOpenEditor(root, preferredEditor);
         if (editor === 'cursor') {
             console.log(green('✅ Cursor opened'));
         } else if (editor === 'vscode') {
