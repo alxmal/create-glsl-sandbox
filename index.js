@@ -72,13 +72,25 @@ const tryGitInit = (root, msg = 'init') => {
         console.log(yellow(`⚠️  Git init failed: ${error.message}`));
     }
 };
-const tryOpenVSCode = (root) => {
-    if (!hasCmd('code')) return false;
-    const r = child_process.spawnSync('code', ['.'], {
-        cwd: root,
-        stdio: 'ignore',
-    });
-    return r.status === 0;
+const tryOpenEditor = (root) => {
+    // Try Cursor first, then VS Code
+    if (hasCmd('cursor')) {
+        const r = child_process.spawnSync('cursor', ['.'], {
+            cwd: root,
+            stdio: 'ignore',
+        });
+        if (r.status === 0) return 'cursor';
+    }
+
+    if (hasCmd('code')) {
+        const r = child_process.spawnSync('code', ['.'], {
+            cwd: root,
+            stdio: 'ignore',
+        });
+        if (r.status === 0) return 'vscode';
+    }
+
+    return false;
 };
 
 // Validation helpers
@@ -301,7 +313,7 @@ ${bold('Options:')}
   --no-install       Skip dependency installation
   --no-git           Skip git initialization
   --no-lygia         Skip LYGIA submodule addition
-  --no-code          Skip VS Code opening
+  --no-code          Skip editor opening (Cursor/VS Code)
   --run              Start dev server after setup
   --help, -h         Show this help
 
@@ -314,7 +326,7 @@ ${bold('Features:')}
   ✨ Three.js + Vite setup
   🎨 GLSL shader support with hot reload
   📦 LYGIA shader library integration
-  🔧 VS Code auto-opening
+  🔧 Editor auto-opening (Cursor/VS Code)
   🚀 Ready-to-run development environment
 `);
         process.exit(0);
@@ -467,21 +479,26 @@ ${bold('Features:')}
     }
 
     if (autoCode) {
-        console.log('🔧 Opening VS Code...');
-        const ok = tryOpenVSCode(root);
-        if (ok) {
+        console.log('🔧 Opening editor...');
+        const editor = tryOpenEditor(root);
+        if (editor === 'cursor') {
+            console.log(green('✅ Cursor opened'));
+        } else if (editor === 'vscode') {
             console.log(green('✅ VS Code opened'));
         } else {
             console.log(
                 gray(
-                    "⚠️  VS Code 'code' command not found. Install it via Command Palette."
+                    "⚠️  Neither Cursor nor VS Code found. Install 'cursor' or 'code' command."
                 )
             );
         }
     }
 
-    console.log(`\n🚀 To start development:`);
-    console.log(`  ${green(pm)} run dev`);
+    if (!autoRun) {
+        console.log(`\n🚀 To start development:`);
+        console.log(`  ${green('cd')} ${projectName}`);
+        console.log(`  ${green(pm)} run dev`);
+    }
     console.log(
         `\n📝 Edit ${cyan('src/shaders/*.glsl')} and ${cyan(
             'src/main.js'
@@ -490,6 +507,11 @@ ${bold('Features:')}
 
     if (autoRun) {
         console.log('\n🏃 Starting development server...');
+        console.log(gray(`Switching to project directory: ${root}`));
+        console.log(gray('Press Ctrl+C to stop the server\n'));
+
+        // Change to project directory and start dev server
+        process.chdir(root);
         const runArgs = pm === 'yarn' ? ['dev'] : ['run', 'dev'];
         try {
             runCmd(pm, runArgs, root);
